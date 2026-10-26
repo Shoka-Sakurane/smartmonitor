@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartMonitor</title>
+<style>
+:root{--bg:#eef2f1;--card:#fff;--tx:#14211f;--mut:#5d6f6b;--ac:#0b6e5f;--bd:#d3dedb;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1716;--card:#16231f;--tx:#e4efec;--mut:#8fa5a0;--ac:#3fd0b4;--bd:#25382f;--bad:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:960px;margin:0 auto;padding:24px 16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+h1{margin:0;font-size:1.5rem}h2{font-size:1.1rem;margin:24px 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.val{font-size:2rem;font-weight:700}.mut{color:var(--mut);font-size:.85rem}.out .val{color:var(--bad)}
+input,select,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+button{background:var(--ac);color:var(--card);border-color:var(--ac);cursor:pointer}button.ghost{background:none;color:var(--ac)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.err{color:var(--bad);min-height:1.4em}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <section id="login" class="card" hidden style="max-width:360px;margin:12vh auto 0">
+    <h1>SmartMonitor</h1><p class="mut">Inicia sesión para ver tus sensores.</p>
+    <form id="loginForm" style="flex-direction:column;align-items:stretch">
+      <input name="username" placeholder="Usuario" autocomplete="username" required>
+      <input name="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+      <button>Iniciar sesión</button><div class="err" id="loginErr"></div>
+    </form>
+  </section>
+
+  <section id="app" hidden>
+    <header><h1>SmartMonitor</h1>
+      <div><span class="mut" id="who"></span> <button class="ghost" id="logout">Cerrar sesión</button></div>
+    </header>
+    <div class="grid" id="cards"></div>
+
+    <div id="adminBox" hidden>
+      <h2>Agregar sensor</h2>
+      <form id="sensorForm" class="card">
+        <input name="name" placeholder="Nombre" required>
+        <select name="type"><option>temperatura</option><option>humedad</option><option>consumo</option><option>presion</option></select>
+        <input name="min_value" type="number" step="any" placeholder="Mínimo" required style="width:100px">
+        <input name="max_value" type="number" step="any" placeholder="Máximo" required style="width:100px">
+        <button>Guardar sensor</button><span class="err" id="sensorErr"></span>
+      </form>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path, opts = {}) {
+  const r = await fetch('/api/' + path, { headers: { 'Content-Type': 'application/json' }, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Error inesperado');
+  return d;
+}
+let me = null, timer = null;
+
+function view(logged) {
+  $('#login').hidden = logged; $('#app').hidden = !logged;
+  clearInterval(timer);
+  if (logged) { refresh(); timer = setInterval(refresh, 3000); }
+}
+async function refresh() {
+  try {
+    const rows = await api('readings/latest');
+    $('#cards').innerHTML = rows.length ? rows.map(s => {
+      const out = s.value != null && (s.value < s.min_value || s.value > s.max_value);
+      return `<div class="card ${out ? 'out' : ''}">
+        <div>${esc(s.name)}</div>
+        <div class="val">${s.value ?? '—'} <small>${esc(s.unit)}</small></div>
+        <div class="mut">Rango ${s.min_value}–${s.max_value} ${esc(s.unit)}${out ? ' · fuera de rango' : ''}</div>
+        ${me.role === 'admin' ? `<button class="ghost" data-del="${s.id}">Eliminar</button>` : ''}</div>`;
+    }).join('') : '<p class="mut">Aún no hay sensores. Agrega el primero abajo.</p>';
+  } catch { view(false); }
+}
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+  try {
+    me = await api('login', { method: 'POST', body: f });
+    $('#who').textContent = `${me.username} (${me.role})`; $('#adminBox').hidden = me.role !== 'admin';
+    $('#loginErr').textContent = ''; view(true);
+  } catch (err) { $('#loginErr').textContent = err.message; }
+};
+$('#logout').onclick = async () => { await api('logout', { method: 'POST' }); view(false); };
+$('#sensorForm').onsubmit = async e => {
+  e.preventDefault();
+  try { await api('sensors', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+    e.target.reset(); $('#sensorErr').textContent = ''; refresh();
+  } catch (err) { $('#sensorErr').textContent = err.message; }
+};
+$('#cards').onclick = async e => {
+  const id = e.target.dataset.del;
+  if (id && confirm('¿Eliminar este sensor y su historial?')) { await api('sensors/' + id, { method: 'DELETE' }); refresh(); }
+};
+api('me').then(u => { me = u; $('#who').textContent = `${u.username} (${u.role})`;
+  $('#adminBox').hidden = u.role !== 'admin'; view(true); }).catch(() => view(false));
+</script>
+</body>
+</html>
