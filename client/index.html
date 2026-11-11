@@ -5,20 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SmartMonitor</title>
 <style>
-:root{--bg:#eef2f1;--card:#fff;--tx:#14211f;--mut:#5d6f6b;--ac:#0b6e5f;--bd:#d3dedb;--bad:#b42318}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1716;--card:#16231f;--tx:#e4efec;--mut:#8fa5a0;--ac:#3fd0b4;--bd:#25382f;--bad:#ff8a80}}
+:root{--bg:#eef2f1;--card:#fff;--tx:#14211f;--mut:#566966;--ac:#0b6e5f;--bd:#c9d6d2;--bad:#b42318;--warn:#9a5b00}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1716;--card:#16231f;--tx:#e4efec;--mut:#9ab0ab;--ac:#3fd0b4;--bd:#2a3f38;--bad:#ff8a80;--warn:#ffc266}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
-main{max-width:960px;margin:0 auto;padding:24px 16px}
-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
-h1{margin:0;font-size:1.5rem}h2{font-size:1.1rem;margin:24px 0 8px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.val{font-size:2rem;font-weight:700}.mut{color:var(--mut);font-size:.85rem}.out .val{color:var(--bad)}
+main{max-width:1000px;margin:0 auto;padding:20px 16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{margin:0;font-size:1.5rem}h2{font-size:1.05rem;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+button.sensor{text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer}
+button.sensor[aria-pressed=true]{border:2px solid var(--ac)}
+.val{font-size:2rem;font-weight:700}.mut{color:var(--mut);font-size:.85rem}
+.out .val,.crítica{color:var(--bad)}.advertencia{color:var(--warn)}
 input,select,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
-button{background:var(--ac);color:var(--card);border-color:var(--ac);cursor:pointer}button.ghost{background:none;color:var(--ac)}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.err{color:var(--bad);min-height:1.4em}
-[hidden]{display:none!important}
+button.pri,a.btn{background:var(--ac);color:var(--card);border-color:var(--ac);cursor:pointer;text-decoration:none;padding:8px 12px;border-radius:6px}
+button.ghost{background:none;color:var(--ac);cursor:pointer}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+form,.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+nav{display:flex;gap:8px;margin:12px 0}nav button[aria-current=page]{background:var(--ac);color:var(--card)}
+#banner{padding:10px 14px;border-radius:8px;border:1px solid var(--bad);color:var(--bad);margin-bottom:12px}
+.err{color:var(--bad);min-height:1.4em}[hidden]{display:none!important}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px;border-bottom:1px solid var(--bd)}
+.chart{position:relative;height:260px;margin:10px 0}
 </style>
 </head>
 <body>
@@ -26,30 +34,52 @@ form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.err{color:var(--bad
   <section id="login" class="card" hidden style="max-width:360px;margin:12vh auto 0">
     <h1>SmartMonitor</h1><p class="mut">Inicia sesión para ver tus sensores.</p>
     <form id="loginForm" style="flex-direction:column;align-items:stretch">
-      <input name="username" placeholder="Usuario" autocomplete="username" required>
-      <input name="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
-      <button>Iniciar sesión</button><div class="err" id="loginErr"></div>
+      <input name="username" placeholder="Usuario" aria-label="Usuario" autocomplete="username" required>
+      <input name="password" type="password" placeholder="Contraseña" aria-label="Contraseña" autocomplete="current-password" required>
+      <button class="pri">Iniciar sesión</button><div class="err" id="loginErr" role="alert"></div>
     </form>
   </section>
 
   <section id="app" hidden>
     <header><h1>SmartMonitor</h1>
-      <div><span class="mut" id="who"></span> <button class="ghost" id="logout">Cerrar sesión</button></div>
-    </header>
-    <div class="grid" id="cards"></div>
+      <div><span class="mut" id="who"></span> <button class="ghost" id="logout">Cerrar sesión</button></div></header>
+    <div id="banner" role="status" hidden></div>
+    <nav aria-label="Secciones"><button id="tabPanel" aria-current="page">Panel</button><button id="tabEvents">Eventos</button></nav>
 
-    <div id="adminBox" hidden>
-      <h2>Agregar sensor</h2>
-      <form id="sensorForm" class="card">
-        <input name="name" placeholder="Nombre" required>
-        <select name="type"><option>temperatura</option><option>humedad</option><option>consumo</option><option>presion</option></select>
-        <input name="min_value" type="number" step="any" placeholder="Mínimo" required style="width:100px">
-        <input name="max_value" type="number" step="any" placeholder="Máximo" required style="width:100px">
-        <button>Guardar sensor</button><span class="err" id="sensorErr"></span>
-      </form>
-    </div>
+    <section id="vPanel">
+      <div class="grid" id="cards"></div>
+      <div class="card" id="detail" hidden style="margin-top:12px">
+        <div class="row" style="justify-content:space-between"><h2 id="dTitle"></h2>
+          <label>Periodo <select id="range"><option value="15">Últimos 15 min</option><option value="60" selected>Última hora</option><option value="360">Últimas 6 horas</option><option value="0">Todo</option></select></label></div>
+        <div class="mut" id="stats"></div>
+        <div class="chart"><canvas id="chart" aria-label="Gráfica de lecturas del sensor"></canvas></div>
+        <form id="thForm" hidden><strong>Umbrales:</strong>
+          <input name="min_value" type="number" step="any" aria-label="Mínimo" required style="width:100px">
+          <input name="max_value" type="number" step="any" aria-label="Máximo" required style="width:100px">
+          <button class="pri">Guardar umbrales</button><span class="err" id="thErr"></span>
+          <button type="button" class="ghost" id="delSensor">Eliminar sensor</button></form>
+      </div>
+      <details id="adminBox" hidden style="margin-top:12px"><summary>Agregar sensor</summary>
+        <form id="sensorForm" class="card" style="margin-top:8px">
+          <input name="name" placeholder="Nombre" aria-label="Nombre" required>
+          <select name="type" aria-label="Tipo"><option>temperatura</option><option>humedad</option><option>consumo</option><option>presion</option></select>
+          <input name="min_value" type="number" step="any" placeholder="Mínimo" aria-label="Mínimo" required style="width:100px">
+          <input name="max_value" type="number" step="any" placeholder="Máximo" aria-label="Máximo" required style="width:100px">
+          <button class="pri">Guardar sensor</button><span class="err" id="sensorErr"></span></form></details>
+    </section>
+
+    <section id="vEvents" hidden>
+      <form id="evForm" class="card" style="margin-bottom:12px">
+        <label>Sensor <select name="sensor_id" id="evSensor"><option value="">Todos</option></select></label>
+        <label>Severidad <select name="severity"><option value="">Todas</option><option>advertencia</option><option>crítica</option></select></label>
+        <label>Desde <input type="date" name="from"></label><label>Hasta <input type="date" name="to"></label>
+        <button class="pri">Filtrar</button><a class="btn" id="csv" href="/api/export/events.csv" download>Exportar CSV</a></form>
+      <div class="card"><table><thead><tr><th>Fecha</th><th>Sensor</th><th>Valor</th><th>Límite superado</th><th>Severidad</th></tr></thead><tbody id="evBody"></tbody></table>
+        <p class="mut" id="evEmpty" hidden>No hay eventos para ese filtro.</p></div>
+    </section>
   </section>
 </main>
+<script src="/vendor/chart.umd.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,47 +90,91 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error(d.error || 'Error inesperado');
   return d;
 }
-let me = null, timer = null;
+let me = null, timer = null, sensors = [], sel = null, chart = null;
+const isOut = s => s.value != null && (s.value < s.min_value || s.value > s.max_value);
 
 function view(logged) {
-  $('#login').hidden = logged; $('#app').hidden = !logged;
-  clearInterval(timer);
-  if (logged) { refresh(); timer = setInterval(refresh, 3000); }
+  $('#login').hidden = logged; $('#app').hidden = !logged; clearInterval(timer);
+  if (logged) { $('#who').textContent = `${me.username} (${me.role})`; $('#adminBox').hidden = me.role !== 'admin'; refresh(); timer = setInterval(refresh, 3000); }
+}
+function tab(name) {
+  $('#vPanel').hidden = name !== 'panel'; $('#vEvents').hidden = name !== 'events';
+  $('#tabPanel').toggleAttribute('aria-current', name === 'panel'); $('#tabEvents').toggleAttribute('aria-current', name === 'events');
+  if (name === 'panel') $('#tabPanel').setAttribute('aria-current', 'page'); else $('#tabEvents').setAttribute('aria-current', 'page');
+  if (name === 'events') loadEvents();
 }
 async function refresh() {
   try {
-    const rows = await api('readings/latest');
-    $('#cards').innerHTML = rows.length ? rows.map(s => {
-      const out = s.value != null && (s.value < s.min_value || s.value > s.max_value);
-      return `<div class="card ${out ? 'out' : ''}">
-        <div>${esc(s.name)}</div>
-        <div class="val">${s.value ?? '—'} <small>${esc(s.unit)}</small></div>
-        <div class="mut">Rango ${s.min_value}–${s.max_value} ${esc(s.unit)}${out ? ' · fuera de rango' : ''}</div>
-        ${me.role === 'admin' ? `<button class="ghost" data-del="${s.id}">Eliminar</button>` : ''}</div>`;
-    }).join('') : '<p class="mut">Aún no hay sensores. Agrega el primero abajo.</p>';
+    sensors = await api('readings/latest');
+    const bad = sensors.filter(isOut);
+    $('#banner').hidden = !bad.length;
+    $('#banner').textContent = bad.length ? `Atención: ${bad.length} sensor(es) fuera de rango: ${bad.map(s => s.name).join(', ')}` : '';
+    const focused = document.activeElement?.dataset?.id;
+    $('#cards').innerHTML = sensors.length ? sensors.map(s => `<button class="card sensor ${isOut(s) ? 'out' : ''}" data-id="${s.id}" aria-pressed="${s.id === sel}">
+      <div>${esc(s.name)}</div><div class="val">${s.value ?? '—'} <small>${esc(s.unit)}</small></div>
+      <div class="mut">Rango ${s.min_value}–${s.max_value} ${esc(s.unit)}${isOut(s) ? ' · FUERA DE RANGO' : ' · normal'}</div></button>`).join('')
+      : '<p class="mut">Aún no hay sensores. Agrega el primero abajo.</p>';
+    if (focused) document.querySelector(`[data-id="${focused}"]`)?.focus();
+    $('#evSensor').innerHTML = '<option value="">Todos</option>' + sensors.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    if (sel) loadDetail();
   } catch { view(false); }
 }
+async function loadDetail() {
+  const s = sensors.find(x => x.id === sel);
+  if (!s) { $('#detail').hidden = true; return; }
+  const m = $('#range').value, q = m !== '0' ? `&minutes=${m}` : '';
+  const [rows, st] = await Promise.all([api(`readings?sensor_id=${sel}&limit=300${q}`), api(`sensors/${sel}/stats?${q.slice(1)}`)]);
+  $('#detail').hidden = false; $('#dTitle').textContent = s.name;
+  $('#stats').textContent = st.n ? `Promedio ${st.avg} · Mínimo ${st.min} · Máximo ${st.max} · ${st.n} lecturas` : 'Sin datos en este periodo';
+  const labels = rows.map(r => new Date(r.created_at).toLocaleTimeString());
+  const cfg = [rows.map(r => r.value), rows.map(() => s.min_value), rows.map(() => s.max_value)];
+  if (!chart) {
+    Chart.defaults.color = getComputedStyle(document.body).color;
+    const ac = getComputedStyle(document.documentElement).getPropertyValue('--ac'), bad = getComputedStyle(document.documentElement).getPropertyValue('--bad');
+    chart = new Chart($('#chart'), { type: 'line', data: { labels, datasets: [
+      { label: 'Valor', data: cfg[0], borderColor: ac, borderWidth: 2, pointRadius: 0, tension: .25 },
+      { label: 'Mínimo', data: cfg[1], borderColor: bad, borderDash: [6, 4], borderWidth: 1, pointRadius: 0 },
+      { label: 'Máximo', data: cfg[2], borderColor: bad, borderDash: [6, 4], borderWidth: 1, pointRadius: 0 }] },
+      options: { animation: false, responsive: true, maintainAspectRatio: false } });
+  } else { chart.data.labels = labels; cfg.forEach((d, i) => chart.data.datasets[i].data = d); chart.update(); }
+  if (me.role === 'admin') {
+    $('#thForm').hidden = false;
+    if (!$('#thForm').contains(document.activeElement)) { $('#thForm').min_value.value = s.min_value; $('#thForm').max_value.value = s.max_value; }
+  }
+}
+async function loadEvents() {
+  const p = new URLSearchParams(Object.fromEntries([...new FormData($('#evForm'))].filter(([, v]) => v)));
+  const rows = await api('events?' + p);
+  $('#csv').href = '/api/export/events.csv?' + p;
+  $('#evBody').innerHTML = rows.map(e => `<tr><td>${new Date(e.created_at).toLocaleString()}</td><td>${esc(e.sensor_name)}</td>
+    <td>${e.value} ${esc(e.unit)}</td><td>${esc(e.limit_type)} (${e.threshold})</td><td class="${e.severity}">${esc(e.severity)}</td></tr>`).join('');
+  $('#evEmpty').hidden = rows.length > 0;
+}
 $('#loginForm').onsubmit = async e => {
-  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
-  try {
-    me = await api('login', { method: 'POST', body: f });
-    $('#who').textContent = `${me.username} (${me.role})`; $('#adminBox').hidden = me.role !== 'admin';
-    $('#loginErr').textContent = ''; view(true);
-  } catch (err) { $('#loginErr').textContent = err.message; }
+  e.preventDefault();
+  try { me = await api('login', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); $('#loginErr').textContent = ''; view(true); }
+  catch (err) { $('#loginErr').textContent = err.message; }
 };
 $('#logout').onclick = async () => { await api('logout', { method: 'POST' }); view(false); };
+$('#tabPanel').onclick = () => tab('panel'); $('#tabEvents').onclick = () => tab('events');
+$('#cards').onclick = e => { const b = e.target.closest('[data-id]'); if (b) { sel = Number(b.dataset.id); refresh().then(() => $('#detail').scrollIntoView({ block: 'nearest', behavior: 'smooth' })); } };
+$('#range').onchange = loadDetail;
+$('#delSensor').onclick = async () => {
+  const s = sensors.find(x => x.id === sel);
+  if (s && confirm(`¿Eliminar "${s.name}" y todo su historial?`)) { await api('sensors/' + sel, { method: 'DELETE' }); sel = null; $('#detail').hidden = true; refresh(); }
+};
+$('#evForm').onsubmit = e => { e.preventDefault(); loadEvents(); };
+$('#thForm').onsubmit = async e => {
+  e.preventDefault(); const s = sensors.find(x => x.id === sel);
+  try { await api('sensors/' + sel, { method: 'PUT', body: { name: s.name, type: s.type, min_value: e.target.min_value.value, max_value: e.target.max_value.value } });
+    $('#thErr').textContent = 'Guardado'; refresh(); } catch (err) { $('#thErr').textContent = err.message; }
+};
 $('#sensorForm').onsubmit = async e => {
   e.preventDefault();
-  try { await api('sensors', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
-    e.target.reset(); $('#sensorErr').textContent = ''; refresh();
-  } catch (err) { $('#sensorErr').textContent = err.message; }
+  try { await api('sensors', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); e.target.reset(); $('#sensorErr').textContent = ''; refresh(); }
+  catch (err) { $('#sensorErr').textContent = err.message; }
 };
-$('#cards').onclick = async e => {
-  const id = e.target.dataset.del;
-  if (id && confirm('¿Eliminar este sensor y su historial?')) { await api('sensors/' + id, { method: 'DELETE' }); refresh(); }
-};
-api('me').then(u => { me = u; $('#who').textContent = `${u.username} (${u.role})`;
-  $('#adminBox').hidden = u.role !== 'admin'; view(true); }).catch(() => view(false));
+api('me').then(u => { me = u; view(true); }).catch(() => view(false));
 </script>
 </body>
 </html>
