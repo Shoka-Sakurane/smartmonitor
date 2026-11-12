@@ -1,9 +1,9 @@
-// Genera lecturas simuladas con una caminata aleatoria alrededor de un valor base.
+// Lecturas simuladas (caminata aleatoria) y registro automático de eventos (HU-03, HU-08).
 const BASE = {
-  temperatura: { center: 22, step: 2 },
-  humedad: { center: 55, step: 5 },
-  consumo: { center: 300, step: 40 },
-  presion: { center: 1013, step: 3 },
+  temperatura: { center: 22, step: 4 },
+  humedad: { center: 55, step: 8 },
+  consumo: { center: 300, step: 70 },
+  presion: { center: 1013, step: 5 },
 };
 
 function nextValue(type, prev) {
@@ -13,12 +13,26 @@ function nextValue(type, prev) {
   return Math.round(v * 100) / 100;
 }
 
+// Devuelve ['máximo'|'mínimo', umbral] si el valor sale del rango, o null.
+const outOfRange = (s, v) => (v > s.max_value ? ['máximo', s.max_value] : v < s.min_value ? ['mínimo', s.min_value] : null);
+
 function tick(db) {
-  const sensors = db.prepare('SELECT id, type FROM sensors WHERE active = 1').all();
+  const sensors = db.prepare('SELECT * FROM sensors WHERE active = 1').all();
   const last = db.prepare('SELECT value FROM readings WHERE sensor_id = ? ORDER BY id DESC LIMIT 1');
-  const insert = db.prepare('INSERT INTO readings (sensor_id, value) VALUES (?, ?)');
+  const insR = db.prepare('INSERT INTO readings (sensor_id, value) VALUES (?, ?)');
+  const insE = db.prepare('INSERT INTO events (sensor_id, value, limit_type, threshold, severity) VALUES (?,?,?,?,?)');
   db.transaction(() => {
-    for (const s of sensors) insert.run(s.id, nextValue(s.type, last.get(s.id)?.value));
+    for (const s of sensors) {
+      const prev = last.get(s.id)?.value;
+      const v = nextValue(s.type, prev);
+      insR.run(s.id, v);
+      const o = outOfRange(s, v);
+      // Un evento por salida de rango (no uno por cada lectura fuera de rango).
+      if (o && !(prev != null && outOfRange(s, prev))) {
+        const gap = Math.abs(v - o[1]) / (s.max_value - s.min_value);
+        insE.run(s.id, v, o[0], o[1], gap > 0.2 ? 'crítica' : 'advertencia');
+      }
+    }
   })();
   return sensors.length;
 }

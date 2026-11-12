@@ -9,27 +9,20 @@ function openDb(file = process.env.DB_PATH || path.join(__dirname, '..', 'data',
   db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin','operador'))
-    );
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','operador')));
     CREATE TABLE IF NOT EXISTS sensors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      unit TEXT NOT NULL,
-      min_value REAL NOT NULL,
-      max_value REAL NOT NULL,
-      active INTEGER NOT NULL DEFAULT 1
-    );
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, type TEXT NOT NULL, unit TEXT NOT NULL,
+      min_value REAL NOT NULL, max_value REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS readings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sensor_id INTEGER NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
-      value REAL NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-    );
+      id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_id INTEGER NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
+      value REAL NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     CREATE INDEX IF NOT EXISTS idx_readings_sensor ON readings(sensor_id, id);
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, sensor_id INTEGER NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
+      value REAL NOT NULL, limit_type TEXT NOT NULL, threshold REAL NOT NULL, severity TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    CREATE INDEX IF NOT EXISTS idx_events_sensor ON events(sensor_id, id);
   `);
   seed(db);
   return db;
